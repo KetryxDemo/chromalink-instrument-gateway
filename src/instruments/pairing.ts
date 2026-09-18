@@ -7,6 +7,7 @@
  */
 
 import { record } from '../audit/auditLog.js';
+import { checkCompatibility } from './firmwareCompatibility.js';
 import type { DiscoveredInstrument } from './discovery.js';
 
 export interface PairedInstrument {
@@ -21,11 +22,22 @@ export class PairingError extends Error {}
 
 const paired = new Map<string, PairedInstrument>();
 
+export interface PairOptions {
+  /** Service-engineer override for an instrument that cannot be updated in the field. */
+  overrideFirmwareGate?: boolean;
+}
+
 export function pair(
   instrument: DiscoveredInstrument,
   organisationId: string,
   actor: string,
+  options: PairOptions = {},
 ): PairedInstrument {
+  const verdict = checkCompatibility(instrument.model, instrument.firmwareVersion);
+  if (!verdict.compatible && !options.overrideFirmwareGate) {
+    throw new PairingError(verdict.reason ?? 'Instrument firmware is not supported');
+  }
+
   const existing = paired.get(instrument.instrumentId);
   if (existing && existing.organisationId !== organisationId) {
     throw new PairingError(
